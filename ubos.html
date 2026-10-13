@@ -69,6 +69,15 @@
     .start-links{margin-top:12px;display:flex;gap:12px;justify-content:space-between}
     .link-btn{background:transparent;border:1px solid rgba(255,255,255,0.03);padding:8px 10px;border-radius:8px;cursor:pointer}
 
+    /* File explorer */
+    .file-list{padding:12px;display:flex;flex-direction:column;gap:8px;color:#e6eef8}
+    .file-item{display:flex;justify-content:space-between;gap:8px;padding:8px;border-radius:8px;background:rgba(255,255,255,0.02)}
+
+    /* Assistant */
+    .assistant { display:flex;flex-direction:column;height:100% }
+    .assistant textarea{width:100%;height:160px;padding:8px;border-radius:8px;border:0;background:rgba(0,0,0,0.2);color:#e6eef8 }
+    .assistant .result{flex:1;padding:8px;background:rgba(0,0,0,0.15);border-radius:8px;overflow:auto}
+
     @media (max-width:700px){ .start-menu{width:92vw} }
   </style>
 </head>
@@ -76,12 +85,14 @@
   <div class="desktop" id="desktop">
     <div style="display:flex;gap:12px;align-items:center">
       <h2 style="margin:0">UBos</h2>
-      <div class="small">A tiny web OS — Browser + Notepad</div>
+      <div class="small">A tiny web OS — Browser + Notepad + Explorer + Assistant</div>
     </div>
 
     <div class="dock">
       <div class="app-icon" id="openBrowser" title="Browser">🌐</div>
       <div class="app-icon" id="openNotepad" title="Notepad">📝</div>
+      <div class="app-icon" id="openExplorer" title="Files">📁</div>
+      <div class="app-icon" id="openAssistant" title="Assistant">🤖</div>
     </div>
 
     <div style="flex:1"></div>
@@ -111,11 +122,12 @@
   </div>
 
   <!-- Browser Window -->
-  <div class="window" id="browserWindow" style="width:80%;height:70%;left:8%;top:8%;display:none">
+  <div class="window" id="browserWindow" style="width:90%;height:80%;left:5%;top:5%;display:none">
     <div class="title">
       <div>Browser</div>
       <div class="controls">
         <div class="w-btn min" id="minBrowser" title="Minimize"></div>
+        <div class="w-btn max" id="fullBrowser" title="Fullscreen"></div>
         <div class="w-btn close" id="closeBrowser" title="Close"></div>
       </div>
     </div>
@@ -156,9 +168,51 @@
     </div>
   </div>
 
+  <!-- File Explorer Window -->
+  <div class="window" id="explorerWindow" style="width:60%;height:60%;left:20%;top:20%;display:none">
+    <div class="title">
+      <div>Files</div>
+      <div class="controls">
+        <div class="w-btn min" id="minExplorer" title="Minimize"></div>
+        <div class="w-btn close" id="closeExplorer" title="Close"></div>
+      </div>
+    </div>
+    <div class="content">
+      <div style="display:flex;gap:8px;padding:8px;background:#081425;align-items:center">
+        <button id="openDir">Open folder</button>
+        <button id="saveFile">Save file</button>
+        <input id="uploadFile" type="file" style="display:none" />
+      </div>
+      <div class="file-list" id="fileList">
+        <div class="small">No folder opened.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Assistant Window (Gemini placeholder) -->
+  <div class="window" id="assistantWindow" style="width:60%;height:60%;left:20%;top:20%;display:none">
+    <div class="title">
+      <div>Assistant (Gemini)</div>
+      <div class="controls">
+        <div class="w-btn min" id="minAssistant" title="Minimize"></div>
+        <div class="w-btn close" id="closeAssistant" title="Close"></div>
+      </div>
+    </div>
+    <div class="content assistant">
+      <div style="padding:10px;display:flex;gap:8px;align-items:center;background:#081425">
+        <input id="geminiProxy" placeholder="Gemini proxy URL (optional)" style="flex:1;padding:8px;border-radius:8px;border:none;background:rgba(0,0,0,0.2);color:#e6eef8" />
+        <button id="sendGemini">Send</button>
+      </div>
+      <div style="padding:10px">
+        <textarea id="geminiPrompt" placeholder="Ask something to Gemini..."></textarea>
+        <div class="result" id="geminiResult">Responses will appear here. To use Gemini, provide a server proxy that forwards requests to Google Gemini with your API key — the proxy should accept POST { prompt } and return { text }.</div>
+      </div>
+    </div>
+  </div>
+
 <script>
 // UBos: manages windows and apps, plus emulated cookie storage and app data
-(function(){
+(async function(){
   const storageKey = 'ubos_state_v1';
   const cookieKey = 'ubos_cookies_v1';
   function saveState(state){ localStorage.setItem(storageKey, JSON.stringify(state)); }
@@ -173,7 +227,8 @@
   // Window controls
   const browserWindow = document.getElementById('browserWindow');
   const noteWindow = document.getElementById('noteWindow');
-  const taskLeft = document.getElementById('taskLeft');
+  const explorerWindow = document.getElementById('explorerWindow');
+  const assistantWindow = document.getElementById('assistantWindow');
   const taskCenter = document.getElementById('taskCenter');
   const startBtn = document.getElementById('startBtn');
   const startMenu = document.getElementById('startMenu');
@@ -181,10 +236,29 @@
 
   document.getElementById('openBrowser').addEventListener('click', ()=>{ openApp('browser'); });
   document.getElementById('openNotepad').addEventListener('click', ()=>{ openApp('notepad'); });
+  document.getElementById('openExplorer').addEventListener('click', ()=>{ openApp('explorer'); });
+  document.getElementById('openAssistant').addEventListener('click', ()=>{ openApp('assistant'); });
+
   document.getElementById('closeBrowser').addEventListener('click', ()=>{ closeApp('browser'); });
   document.getElementById('closeNote').addEventListener('click', ()=>{ closeApp('notepad'); });
+  document.getElementById('closeExplorer').addEventListener('click', ()=>{ closeApp('explorer'); });
+  document.getElementById('closeAssistant').addEventListener('click', ()=>{ closeApp('assistant'); });
+
   document.getElementById('minBrowser').addEventListener('click', ()=>{ minimizeApp('browser'); });
   document.getElementById('minNote').addEventListener('click', ()=>{ minimizeApp('notepad'); });
+  document.getElementById('minExplorer').addEventListener('click', ()=>{ minimizeApp('explorer'); });
+  document.getElementById('minAssistant').addEventListener('click', ()=>{ minimizeApp('assistant'); });
+
+  // Fullscreen toggle
+  document.getElementById('fullBrowser').addEventListener('click', async ()=>{
+    if (!document.fullscreenElement) {
+      await browserWindow.requestFullscreen().catch(()=>{});
+      browserWindow.style.left='0'; browserWindow.style.top='0'; browserWindow.style.width='100%'; browserWindow.style.height='100%';
+    } else {
+      await document.exitFullscreen().catch(()=>{});
+      browserWindow.style.left='5%'; browserWindow.style.top='5%'; browserWindow.style.width='90%'; browserWindow.style.height='80%';
+    }
+  });
 
   // Notepad app
   const noteArea = document.getElementById('noteArea');
@@ -205,7 +279,9 @@
   // Taskbar management
   const apps = {
     browser: { id:'browser', title:'Browser', icon:'🌐', el: browserWindow, open: false, minimized: false },
-    notepad: { id:'notepad', title:'Notepad', icon:'📝', el: noteWindow, open: false, minimized: false }
+    notepad: { id:'notepad', title:'Notepad', icon:'📝', el: noteWindow, open: false, minimized: false },
+    explorer: { id:'explorer', title:'Files', icon:'📁', el: explorerWindow, open: false, minimized: false },
+    assistant: { id:'assistant', title:'Assistant', icon:'🤖', el: assistantWindow, open: false, minimized: false }
   };
 
   function openApp(name){ const a=apps[name]; if(!a) return; a.open = true; a.minimized = false; a.el.style.display='block'; bringToFront(a.el); refreshTaskbar(); }
@@ -253,24 +329,21 @@
   // open link in UBos browser (select or create tab)
   function openLinkInBrowser(url){
     if(!url) return;
-    // normalize
     if(!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) url = 'https://' + url;
-    // reuse active browser tab or create new
     if(!tabs || tabs.length===0) createTab(url);
     else{
       const t = tabs.find(x=>x.id===active);
       if(t){ pushHistory(t, url); loadTab(t); } else createTab(url);
     }
-    // ensure browser app open
     openApp('browser');
   }
 
-  // Fetch through proxy and rewrite resource URLs to go via proxy too, plus inject cookie bridge
+  // Improved fetchAndPrepare: remove CSP meta tags, inject base, rewrite resources
   async function fetchAndPrepare(url){
     let proxyPrefix = PROXY;
     try{
       const controller = new AbortController();
-      const id = setTimeout(()=>controller.abort(), 1500);
+      const id = setTimeout(()=>controller.abort(), 1200);
       const probe = await fetch(PROXY + encodeURIComponent('https://example.com'), { method:'GET', signal: controller.signal });
       clearTimeout(id);
       if (!probe.ok) throw new Error('probe failed');
@@ -281,19 +354,27 @@
     if(!res.ok) throw new Error('Proxy HTTP ' + res.status);
     let html = await res.text();
 
+    // quick strip of CSP meta tags to avoid preventing scripts/styles from loading via proxy
+    html = html.replace(/<meta[^>]*http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, '');
+
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
+    // ensure a base tag so relative resources resolve
     const base = doc.querySelector('base') || doc.createElement('base'); base.setAttribute('href', url); doc.head.prepend(base);
 
+    // helper to route attributes through proxy
     function routeAttr(el, attr){ const val = el.getAttribute(attr); if(!val) return; try{ const abs = new URL(val, url).href; el.setAttribute(attr, proxyPrefix + encodeURIComponent(abs)); }catch(e){} }
 
+    // rewrite common resource attributes
     doc.querySelectorAll('img').forEach(img=>routeAttr(img,'src'));
+    doc.querySelectorAll('source').forEach(s=>{ if(s.src) routeAttr(s,'src'); if(s.srcset) routeAttr(s,'srcset'); });
     doc.querySelectorAll('script').forEach(s=>{ if(s.src) routeAttr(s,'src'); });
     doc.querySelectorAll('link[rel="stylesheet"]').forEach(l=>routeAttr(l,'href'));
     doc.querySelectorAll('iframe').forEach(f=>routeAttr(f,'src'));
     doc.querySelectorAll('a').forEach(a=>{ const href = a.getAttribute('href'); if(!href) return; try{ const abs=new URL(href,url).href; a.setAttribute('href', abs); a.setAttribute('target','_self'); }catch(e){} });
 
+    // inject cookie bridge
     const bridge = doc.createElement('script');
     bridge.textContent = `
       (function(){
@@ -362,6 +443,8 @@
   const pinned = [
     {title:'Browser', icon:'🌐', action: ()=>openApp('browser')},
     {title:'Notepad', icon:'📝', action: ()=>openApp('notepad')},
+    {title:'Files', icon:'📁', action: ()=>openApp('explorer')},
+    {title:'Google', icon:'🔎', action: ()=>openLinkInBrowser('https://www.google.com')},
     {title:'GitHub', icon:'🐙', action: ()=>openLinkInBrowser('https://github.com/ppp65isking/cakcukator')},
     {title:'UBos Home', icon:'🏠', action: ()=>openLinkInBrowser('https://ppp65isking.github.io/cakcukator/')}
   ];
@@ -378,12 +461,91 @@
   function showStartMenu(){ renderStartMenu(); startMenu.style.display='block'; }
   function hideStartMenu(){ startMenu.style.display='none'; }
 
+  // File Explorer implementation using File System Access API where available
+  let currentDirectoryHandle = null;
+  const fileListEl = document.getElementById('fileList');
+  document.getElementById('openDir').addEventListener('click', async ()=>{
+    try{
+      if(window.showDirectoryPicker){
+        currentDirectoryHandle = await window.showDirectoryPicker();
+        await refreshDirectory();
+      } else {
+        // fallback: prompt for a file to show
+        document.getElementById('uploadFile').click();
+      }
+    }catch(e){ console.error('Open dir failed', e); alert('Folder access cancelled or not supported.'); }
+  });
+
+  document.getElementById('uploadFile').addEventListener('change', async (ev)=>{
+    const f = ev.target.files && ev.target.files[0]; if(!f) return;
+    const text = await f.text();
+    // open file contents in a new browser tab as srcdoc
+    createTabFromHtml(text, f.name);
+    ev.target.value = '';
+  });
+
+  async function refreshDirectory(){
+    fileListEl.innerHTML = '';
+    if(!currentDirectoryHandle){ fileListEl.innerHTML = '<div class="small">No folder opened.</div>'; return; }
+    for await (const entry of currentDirectoryHandle.values()){
+      const row = document.createElement('div'); row.className='file-item';
+      row.innerHTML = `<div>${entry.kind === 'file' ? '📄' : '📁'} ${entry.name}</div><div><button data-name='${entry.name}'>Open</button></div>`;
+      const btn = row.querySelector('button');
+      btn.addEventListener('click', async ()=>{
+        if(entry.kind === 'file'){
+          const fh = await currentDirectoryHandle.getFileHandle(entry.name);
+          const file = await fh.getFile();
+          const text = await file.text();
+          createTabFromHtml(text, entry.name);
+        }
+      });
+      fileListEl.appendChild(row);
+    }
+  }
+
+  async function createTabFromHtml(html, title){ const id=makeId(); const tab={id,url:title,history:[title],historyIndex:0,title:title,mode:'srcdoc',srcdoc:html}; tabs.push(tab); active=id; renderTabs(); selectTab(id); saveUBState(); }
+
+  document.getElementById('saveFile').addEventListener('click', async ()=>{
+    // Save active tab srcdoc if available
+    const t = tabs.find(x=>x.id===active); if(!t) return alert('No active tab');
+    const content = t.mode==='srcdoc' ? t.srcdoc : null;
+    if(!content) return alert('Active tab is not savable (not srcdoc).');
+    if(window.showSaveFilePicker){
+      try{
+        const handle = await window.showSaveFilePicker({ suggestedName: (t.title||'page') + '.html', types:[{description:'HTML',accept:{'text/html':['.html']}}] });
+        const w = await handle.createWritable(); await w.write(content); await w.close(); alert('Saved');
+      }catch(e){ console.error(e); alert('Save cancelled or failed'); }
+    } else {
+      const blob = new Blob([content], {type:'text/html'});
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (t.title||'page') + '.html'; document.body.appendChild(a); a.click(); a.remove();
+    }
+  });
+
+  // Assistant (Gemini) interactions — requires a proxy that forwards to Google Gemini with API key server-side
+  const gemProxyInput = document.getElementById('geminiProxy');
+  const gemPrompt = document.getElementById('geminiPrompt');
+  const gemResult = document.getElementById('geminiResult');
+  document.getElementById('sendGemini').addEventListener('click', async ()=>{
+    const proxy = (gemProxyInput.value||'').trim();
+    const prompt = (gemPrompt.value||'').trim();
+    if(!proxy){ return alert('Provide a server-side proxy URL that forwards requests to Google Gemini.'); }
+    try{
+      gemResult.textContent = 'Loading...';
+      const resp = await fetch(proxy, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prompt }) });
+      if(!resp.ok) throw new Error('Proxy error ' + resp.status);
+      const j = await resp.json();
+      gemResult.textContent = j.text || JSON.stringify(j);
+    }catch(e){ gemResult.textContent = 'Error: '+e.message; }
+  });
+
+  // utility: expose openLinkInBrowser to start links
+  window.openLinkInBrowser = openLinkInBrowser;
+
   // expose for debugging
   window.UBos = { tabs, selectTab, createTab, pushHistory, openLinkInBrowser };
 
   // initial taskbar refresh and start menu render
   refreshTaskbar(); renderStartMenu();
-
 })();
 </script>
 </body>

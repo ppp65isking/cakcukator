@@ -85,7 +85,7 @@
   <div class="desktop" id="desktop">
     <div style="display:flex;gap:12px;align-items:center">
       <h2 style="margin:0">UBos</h2>
-      <div class="small">A tiny web OS — Browser + Notepad + Explorer + Assistant</div>
+      <div class="small">A tiny web OS — Browser + Notepad + Explorer + Assistant + Remote Browser</div>
     </div>
 
     <div class="dock">
@@ -93,6 +93,7 @@
       <div class="app-icon" id="openNotepad" title="Notepad">📝</div>
       <div class="app-icon" id="openExplorer" title="Files">📁</div>
       <div class="app-icon" id="openAssistant" title="Assistant">🤖</div>
+      <div class="app-icon" id="openRemote" title="Remote Browser">🖥️</div>
     </div>
 
     <div style="flex:1"></div>
@@ -145,6 +146,27 @@
         <div style="flex:1;position:relative;background:white" id="ubViewerWrap">
           <iframe id="ubViewer" sandbox="allow-scripts allow-forms allow-popups" style="position:absolute;inset:0;border:0;width:100%;height:100%"></iframe>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Remote Browser Window (noVNC iframe) -->
+  <div class="window" id="remoteWindow" style="width:90%;height:80%;left:5%;top:5%;display:none">
+    <div class="title">
+      <div>Remote Browser</div>
+      <div class="controls">
+        <div class="w-btn min" id="minRemote" title="Minimize"></div>
+        <div class="w-btn close" id="closeRemote" title="Close"></div>
+      </div>
+    </div>
+    <div class="content" style="display:flex;flex-direction:column">
+      <div style="padding:8px;background:#081425;display:flex;gap:8px;align-items:center">
+        <input id="remoteUrl" placeholder="Enter noVNC URL or leave blank to use saved" style="flex:1;padding:8px;border-radius:8px;border:0;background:rgba(0,0,0,0.2);color:#e6eef8" />
+        <button id="saveRemote">Save</button>
+        <button id="launchRemote">Launch</button>
+      </div>
+      <div style="flex:1;position:relative;background:black" id="remoteWrap">
+        <iframe id="remoteIframe" style="position:absolute;inset:0;border:0;width:100%;height:100%"></iframe>
       </div>
     </div>
   </div>
@@ -229,6 +251,7 @@
   const noteWindow = document.getElementById('noteWindow');
   const explorerWindow = document.getElementById('explorerWindow');
   const assistantWindow = document.getElementById('assistantWindow');
+  const remoteWindow = document.getElementById('remoteWindow');
   const taskCenter = document.getElementById('taskCenter');
   const startBtn = document.getElementById('startBtn');
   const startMenu = document.getElementById('startMenu');
@@ -238,16 +261,19 @@
   document.getElementById('openNotepad').addEventListener('click', ()=>{ openApp('notepad'); });
   document.getElementById('openExplorer').addEventListener('click', ()=>{ openApp('explorer'); });
   document.getElementById('openAssistant').addEventListener('click', ()=>{ openApp('assistant'); });
+  document.getElementById('openRemote').addEventListener('click', ()=>{ openApp('remote'); });
 
   document.getElementById('closeBrowser').addEventListener('click', ()=>{ closeApp('browser'); });
   document.getElementById('closeNote').addEventListener('click', ()=>{ closeApp('notepad'); });
   document.getElementById('closeExplorer').addEventListener('click', ()=>{ closeApp('explorer'); });
   document.getElementById('closeAssistant').addEventListener('click', ()=>{ closeApp('assistant'); });
+  document.getElementById('closeRemote').addEventListener('click', ()=>{ closeApp('remote'); });
 
   document.getElementById('minBrowser').addEventListener('click', ()=>{ minimizeApp('browser'); });
   document.getElementById('minNote').addEventListener('click', ()=>{ minimizeApp('notepad'); });
   document.getElementById('minExplorer').addEventListener('click', ()=>{ minimizeApp('explorer'); });
   document.getElementById('minAssistant').addEventListener('click', ()=>{ minimizeApp('assistant'); });
+  document.getElementById('minRemote').addEventListener('click', ()=>{ minimizeApp('remote'); });
 
   // Fullscreen toggle
   document.getElementById('fullBrowser').addEventListener('click', async ()=>{
@@ -281,10 +307,11 @@
     browser: { id:'browser', title:'Browser', icon:'🌐', el: browserWindow, open: false, minimized: false },
     notepad: { id:'notepad', title:'Notepad', icon:'📝', el: noteWindow, open: false, minimized: false },
     explorer: { id:'explorer', title:'Files', icon:'📁', el: explorerWindow, open: false, minimized: false },
-    assistant: { id:'assistant', title:'Assistant', icon:'🤖', el: assistantWindow, open: false, minimized: false }
+    assistant: { id:'assistant', title:'Assistant', icon:'🤖', el: assistantWindow, open: false, minimized: false },
+    remote: { id:'remote', title:'Remote', icon:'🖥️', el: remoteWindow, open: false, minimized: false }
   };
 
-  function openApp(name){ const a=apps[name]; if(!a) return; a.open = true; a.minimized = false; a.el.style.display='block'; bringToFront(a.el); refreshTaskbar(); }
+  function openApp(name){ const a=apps[name]; if(!a) return; a.open = true; a.minimized = false; a.el.style.display='block'; bringToFront(a.el); refreshTaskbar(); if(name==='remote') ensureRemoteConfig(); }
   function closeApp(name){ const a=apps[name]; if(!a) return; a.open=false; a.minimized=false; a.el.style.display='none'; refreshTaskbar(); }
   function minimizeApp(name){ const a=apps[name]; if(!a) return; a.minimized = true; a.el.style.display='none'; refreshTaskbar(); }
   function restoreApp(name){ const a=apps[name]; if(!a) return; a.minimized=false; a.open=true; a.el.style.display='block'; bringToFront(a.el); refreshTaskbar(); }
@@ -355,7 +382,7 @@
     let html = await res.text();
 
     // quick strip of CSP meta tags to avoid preventing scripts/styles from loading via proxy
-    html = html.replace(/<meta[^>]*http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, '');
+    html = html.replace(/<meta[^>]*http-equiv=[\"']?Content-Security-Policy[\"']?[^>]*>/gi, '');
 
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
@@ -389,7 +416,7 @@
     `;
     doc.head.appendChild(bridge);
 
-    return '<!doctype html>\n' + doc.documentElement.outerHTML;
+    return '<!doctype html>\\n' + doc.documentElement.outerHTML;
   }
 
   async function loadTab(tab){
@@ -446,7 +473,8 @@
     {title:'Files', icon:'📁', action: ()=>openApp('explorer')},
     {title:'Google', icon:'🔎', action: ()=>openLinkInBrowser('https://www.google.com')},
     {title:'GitHub', icon:'🐙', action: ()=>openLinkInBrowser('https://github.com/ppp65isking/cakcukator')},
-    {title:'UBos Home', icon:'🏠', action: ()=>openLinkInBrowser('https://ppp65isking.github.io/cakcukator/')}
+    {title:'UBos Home', icon:'🏠', action: ()=>openLinkInBrowser('https://ppp65isking.github.io/cakcukator/')},
+    {title:'Remote', icon:'🖥️', action: ()=>openApp('remote')}
   ];
 
   function renderStartMenu(){ startGrid.innerHTML=''; pinned.forEach(p=>{
@@ -519,6 +547,31 @@
       const blob = new Blob([content], {type:'text/html'});
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (t.title||'page') + '.html'; document.body.appendChild(a); a.click(); a.remove();
     }
+  });
+
+  // Remote Browser configuration and launch
+  const remoteUrlInput = document.getElementById('remoteUrl');
+  const remoteIframe = document.getElementById('remoteIframe');
+  const REMOTE_KEY = 'ubos_remote_config_v1';
+
+  function ensureRemoteConfig(){
+    const cfg = JSON.parse(localStorage.getItem(REMOTE_KEY) || 'null');
+    if(cfg && cfg.url){ remoteUrlInput.value = cfg.url; } else { remoteUrlInput.value = ''; }
+  }
+
+  document.getElementById('saveRemote').addEventListener('click', ()=>{
+    const u = (remoteUrlInput.value||'').trim();
+    if(!u) return alert('Enter a noVNC URL (e.g. https://yourhost:6901/vnc.html?autoconnect=true&password=secret)');
+    localStorage.setItem(REMOTE_KEY, JSON.stringify({ url: u }));
+    alert('Saved Remote Browser URL');
+  });
+
+  document.getElementById('launchRemote').addEventListener('click', ()=>{
+    const cfg = JSON.parse(localStorage.getItem(REMOTE_KEY) || 'null');
+    const u = (remoteUrlInput.value||cfg?.url||'').trim();
+    if(!u) return alert('No remote URL configured');
+    remoteIframe.src = u;
+    openApp('remote');
   });
 
   // Assistant (Gemini) interactions — requires a proxy that forwards to Google Gemini with API key server-side

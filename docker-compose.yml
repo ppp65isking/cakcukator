@@ -1,0 +1,11 @@
+version: "3"
+services:
+  remote-chrome:
+    image: accetto/ubuntu-vnc-xfce-chrome:latest
+    environment:
+      - VNC_PASSWORD=secretpassword
+      - RESOLUTION=1366x768
+    ports:
+      - "6901:6901"   # noVNC web UI
+      - "5900:5900"   # VNC (optional)
+    restart: unless-stopped

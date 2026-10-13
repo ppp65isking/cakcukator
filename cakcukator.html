@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>cakcukator — browser-in-browser (single file)</title>
+<style>
+  :root{--bg:#f3f4f6;--panel:#fff;--tab:#ececf0;--tab-active:#fff;--line:#d9dce2;--text:#111;--muted:#6b7280}
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text)}
+  .top{display:flex;flex-direction:column;height:100%}
+  .tabbar{display:flex;gap:6px;padding:8px;background:#e9eaef;border-bottom:1px solid var(--line);overflow:auto}
+  .tab{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--tab);border:1px solid var(--line);border-bottom:none;border-top-left-radius:8px;border-top-right-radius:8px;min-width:130px;max-width:260px;cursor:pointer}
+  .tab.active{background:var(--tab-active);font-weight:600}
+  .tab .title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tab .close{background:transparent;border:0;color:var(--muted);cursor:pointer;padding:2px 6px;font-size:14px}
+  .new-tab{margin-left:6px;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:#f4f5f7;cursor:pointer}
+  .toolbar{display:flex;gap:8px;padding:8px;background:var(--panel);align-items:center;border-bottom:1px solid var(--line)}
+  .toolbar button{padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
+  .toolbar button:disabled{opacity:.45;cursor:not-allowed}
+  .toolbar input[type="text"]{flex:1;padding:8px;border:1px solid var(--line);border-radius:6px;background:#fff}
+  .status{padding:8px 10px;background:#fff;border-bottom:1px solid var(--line);font-size:13px;color:var(--muted)}
+  .viewer{flex:1;position:relative;background:var(--panel);min-height:0}
+  iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}
+  .modal-back{position:fixed;inset:0;background:rgba(0,0,0,0.4);display:none;align-items:center;justify-content:center;padding:20px}
+  .modal{background:#fff;padding:14px;border-radius:8px;max-width:860px;width:100%;max-height:85vh;overflow:auto;border:1px solid var(--line)}
+  .modal textarea{width:100%;height:360px;font-family:monospace;padding:8px;border:1px solid var(--line);border-radius:6px}
+  .small{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+  <div class="top" id="app">
+    <div class="tabbar" id="tabbar"></div>
+
+    <div class="toolbar">
+      <button id="back">◀</button>
+      <button id="forward">▶</button>
+      <button id="reload">⟳</button>
+      <button id="newTab" class="new-tab">+ New tab</button>
+
+      <input id="url" type="text" placeholder="https://example.com or about:blank" />
+      <button id="go">Go</button>
+
+      <input id="fileInput" type="file" accept=".html,text/html" style="display:none" />
+      <button id="openFile">Open file</button>
+      <button id="pasteHtml">Paste HTML</button>
+
+      <label class="small" style="margin-left:8px">
+        Proxy
+        <input id="useProxy" type="checkbox" title="Use public CORS proxy" checked />
+      </label>
+    </div>
+
+    <div class="status" id="status">Tip: Proxy is enabled by default so many sites can load. Public proxy = not private.</div>
+
+    <div class="viewer" id="viewerWrap">
+      <iframe id="viewer" sandbox="allow-forms allow-popups allow-scripts allow-pointer-lock"></iframe>
+    </div>
+  </div>
+
+  <div class="modal-back" id="modalBack" role="dialog" aria-hidden="true">
+    <div class="modal" role="document">
+      <h3>Paste HTML to render</h3>
+      <p class="small">Pasted HTML will run scripts. Only paste code you trust.</p>
+      <textarea id="pasteArea" placeholder="Paste HTML here..."></textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <button id="cancelPaste">Cancel</button>
+        <button id="loadPaste">Load into new tab</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // Default public CORS proxy that returns raw HTML (AllOrigins).
+  // If AllOrigins is down or you want privacy, uncheck "Proxy" and/or host the file via HTTP.
+  const DEFAULT_PROXY = 'https://api.allorigins.win/raw?url=';
+
+  const el = {
+    tabbar: document.getElementById('tabbar'),
+    url: document.getElementById('url'),
+    viewer: document.getElementById('viewer'),
+    status: document.getElementById('status'),
+    back: document.getElementById('back'),
+    forward: document.getElementById('forward'),
+    reload: document.getElementById('reload'),
+    newTab: document.getElementById('newTab'),
+    go: document.getElementById('go'),
+    openFile: document.getElementById('openFile'),
+    fileInput: document.getElementById('fileInput'),
+    pasteHtmlBtn: document.getElementById('pasteHtml'),
+    modalBack: document.getElementById('modalBack'),
+    pasteArea: document.getElementById('pasteArea'),
+    cancelPaste: document.getElementById('cancelPaste'),
+    loadPaste: document.getElementById('loadPaste'),
+    useProxy: document.getElementById('useProxy')
+  };
+
+  function makeId(){ return 't-'+Date.now()+'-'+Math.random().toString(36).slice(2,9); }
+
+  const state = { tabs: [], active: null };
+
+  function titleFromUrl(u){
+    try { if(!u) return 'New tab'; const obj = new URL(u); return obj.hostname.replace(/^www\./,'')||u; } catch(e){ return u||'New tab'; }
+  }
+
+  function createTab({url='about:blank', mode='iframe', srcdoc=''} = {}) {
+    const id = makeId();
+    const tab = { id, url, mode, srcdoc, title: titleFromUrl(url), history: [url], historyIndex: 0 };
+    state.tabs.push(tab);
+    state.active = id;
+    renderTabs();
+    applyTab(tab);
+    saveState();
+    return tab;
+  }
+
+  function renderTabs(){
+    el.tabbar.innerHTML = '';
+    state.tabs.forEach(t=>{
+      const d = document.createElement('div');
+      d.className = 'tab' + (t.id===state.active ? ' active':'' );
+      d.dataset.id = t.id;
+      const title = document.createElement('div'); title.className = 'title'; title.textContent = t.title;
+      const close = document.createElement('button'); close.className = 'close'; close.textContent = '×'; close.title='Close tab';
+      close.addEventListener('click', (ev)=>{ ev.stopPropagation(); closeTab(t.id); });
+      d.appendChild(title); d.appendChild(close); d.addEventListener('click', ()=>selectTab(t.id));
+      el.tabbar.appendChild(d);
+    });
+    const btn = document.createElement('button');
+    btn.className = 'new-tab'; btn.textContent = '+'; btn.title = 'New tab'; btn.addEventListener('click', ()=>createTab());
+    el.tabbar.appendChild(btn);
+  }
+
+  function selectTab(id){
+    state.active = id;
+    renderTabs();
+    applyTab(getActive());
+    saveState();
+  }
+
+  function closeTab(id){
+    if(state.tabs.length <= 1) return alert('Cannot close the last tab');
+    const idx = state.tabs.findIndex(t=>t.id===id); if(idx===-1) return;
+    state.tabs.splice(idx,1);
+    if(state.active===id) state.active = state.tabs[Math.max(0, idx-1)].id;
+    renderTabs(); applyTab(getActive()); saveState();
+  }
+
+  function getActive(){ return state.tabs.find(t=>t.id===state.active) || null; }
+
+  function applyTab(tab){
+    if(!tab) return;
+    el.url.value = tab.url;
+    updateNavButtons();
+    if(tab.mode === 'srcdoc') {
+      setViewerSrcdoc(tab.srcdoc);
+      el.status.textContent = `Rendering local/pasted HTML — ${tab.title}`;
+    } else {
+      setViewerSrc(tab.url, tab);
+    }
+  }
+
+  function injectBase(html, url) {
+    const base = `<base href="${url}">`;
+    if(/<head[^>]*>/i.test(html)) {
+      return html.replace(/<head([^>]*)>/i, `<head$1>${base}`);
+    } else {
+      return base + html;
+    }
+  }
+
+  function setViewerSrcdoc(html) {
+    el.viewer.removeAttribute('src');
+    el.viewer.srcdoc = html;
+  }
+
+  function setViewerSrc(url, tab) {
+    if(el.useProxy.checked && DEFAULT_PROXY) {
+      const proxyUrl = DEFAULT_PROXY + encodeURIComponent(url);
+      el.status.textContent = 'Loading via proxy: ' + url;
+      fetch(proxyUrl).then(r=>{
+        if(!r.ok) throw new Error('Proxy HTTP ' + r.status);
+        return r.text();
+      }).then(html => {
+        // inject base tag so relative resources resolve
+        const htmlWithBase = injectBase(html, url);
+        tab.mode = 'srcdoc';
+        tab.srcdoc = htmlWithBase;
+        setViewerSrcdoc(htmlWithBase);
+        tab.title = titleFromUrl(url);
+        renderTabs();
+        el.status.textContent = 'Loaded via proxy: ' + url;
+      }).catch(err=>{
+        console.error('Proxy fetch failed', err);
+        el.status.textContent = 'Proxy load failed: ' + err.message;
+        // fallback: try loading directly in iframe (may be blocked)
+        try {
+          tab.mode = 'iframe';
+          tab.url = url;
+          el.viewer.srcdoc = '';
+          el.viewer.src = url;
+        } catch (e) {
+          setViewerSrcdoc(`<pre style="padding:16px">Load failed: ${err.message}</pre>`);
+        }
+      });
+      return;
+    }
+
+    // No proxy — set iframe src (many sites will refuse to be framed)
+    try {
+      el.viewer.srcdoc = '';
+      el.viewer.src = url;
+      el.status.textContent = 'Loading ' + url;
+      const t = setTimeout(()=> el.status.textContent = 'If page appears blank, it may block framing; try Proxy, Paste HTML, or Open file.', 2500);
+      el.viewer.onload = () => { clearTimeout(t); el.status.textContent = 'Loaded ' + url; };
+      el.viewer.onerror = () => { clearTimeout(t); el.status.textContent = 'Frame load error. Site may block framing.'; };
+    } catch (e) {
+      setViewerSrcdoc(`<pre style="padding:16px">${e.message}</pre>`);
+      el.status.textContent = 'Error setting iframe src';
+    }
+  }
+
+  function pushHistory(tab, url) {
+    if(tab.history[tab.historyIndex] !== url) {
+      tab.history = tab.history.slice(0, tab.historyIndex + 1);
+      tab.history.push(url);
+      tab.historyIndex = tab.history.length - 1;
+    }
+    tab.url = url; tab.title = titleFromUrl(url);
+  }
+
+  function normalize(raw){
+    if(!raw) return '';
+    if(raw.startsWith('about:')) return raw;
+    if(/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw)) return raw;
+    return 'https://' + raw;
+  }
+
+  function goToUrl(){
+    const tab = getActive(); if(!tab) return;
+    const raw = el.url.value.trim(); if(!raw) return;
+    const url = normalize(raw);
+    pushHistory(tab, url);
+    tab.mode = 'iframe';
+    setViewerSrc(url, tab);
+    renderTabs(); saveState();
+  }
+
+  function goBack(){
+    const tab = getActive(); if(!tab) return;
+    if(tab.historyIndex > 0){ tab.historyIndex--; tab.url = tab.history[tab.historyIndex]; tab.mode='iframe'; setViewerSrc(tab.url, tab); renderTabs(); saveState(); }
+  }
+  function goForward(){
+    const tab = getActive(); if(!tab) return;
+    if(tab.historyIndex < tab.history.length - 1){ tab.historyIndex++; tab.url = tab.history[tab.historyIndex]; tab.mode='iframe'; setViewerSrc(tab.url, tab); renderTabs(); saveState(); }
+  }
+  function reload(){ const tab = getActive(); if(!tab) return; if(tab.mode==='srcdoc') setViewerSrcdoc(tab.srcdoc); else setViewerSrc(tab.url, tab); }
+
+  function updateNavButtons(){
+    const tab = getActive(); if(!tab) return;
+    el.back.disabled = tab.historyIndex <= 0;
+    el.forward.disabled = tab.historyIndex >= tab.history.length - 1;
+  }
+
+  // File open
+  el.openFile.addEventListener('click', ()=> el.fileInput.click());
+  el.fileInput.addEventListener('change', (ev)=>{
+    const f = ev.target.files && ev.target.files[0]; if(!f) return;
+    const fr = new FileReader();
+    fr.onload = ()=> {
+      const html = fr.result;
+      const t = createTab({mode:'srcdoc', srcdoc: html, url: f.name});
+      t.title = f.name; selectTab(t.id);
+    };
+    fr.readAsText(f, 'utf-8');
+    el.fileInput.value = '';
+  });
+
+  // Paste HTML modal
+  el.pasteHtmlBtn.addEventListener('click', ()=> { el.modalBack.style.display = 'flex'; el.modalBack.setAttribute('aria-hidden','false'); el.pasteArea.value = ''; });
+  el.cancelPaste.addEventListener('click', closeModal);
+  el.loadPaste.addEventListener('click', () => {
+    const html = el.pasteArea.value || '<!-- empty -->';
+    const t = createTab({mode:'srcdoc', srcdoc: html, url: '(pasted)'}); t.title = 'pasted'; selectTab(t.id); closeModal();
+  });
+  function closeModal(){ el.modalBack.style.display='none'; el.modalBack.setAttribute('aria-hidden','true'); }
+
+  // Shortcuts
+  document.addEventListener('keydown', (e) => {
+    if((e.ctrlKey||e.metaKey) && e.key==='t'){ e.preventDefault(); createTab(); }
+    if((e.ctrlKey||e.metaKey) && e.key==='w'){ e.preventDefault(); const a=getActive(); if(a) closeTab(a.id); }
+  });
+
+  // Persist small session
+  function saveState(){
+    try{
+      const toSave = state.tabs.map(t=>({
+        id:t.id, url:t.url, mode:t.mode, srcdoc: t.mode==='srcdoc'? (t.srcdoc||'') : '', history:t.history, historyIndex:t.historyIndex, title:t.title
+      }));
+      localStorage.setItem('cakcukator_state', JSON.stringify({tabs:toSave, active: state.active}));
+    }catch(e){}
+  }
+  function restoreState(){
+    try{
+      const raw = localStorage.getItem('cakcukator_state'); if(!raw) return;
+      const parsed = JSON.parse(raw); if(!parsed||!Array.isArray(parsed.tabs)) return;
+      state.tabs = parsed.tabs.map(t => ({...t})); state.active = parsed.active || (state.tabs[0] && state.tabs[0].id) || null;
+    }catch(e){ state.tabs=[]; state.active=null; }
+  }
+
+  // wire UI
+  el.go.addEventListener('click', goToUrl);
+  el.url.addEventListener('keydown', (e)=>{ if(e.key==='Enter') goToUrl(); });
+  el.back.addEventListener('click', goBack);
+  el.forward.addEventListener('click', goForward);
+  el.reload.addEventListener('click', reload);
+  el.newTab.addEventListener('click', ()=> createTab());
+
+  // init
+  restoreState();
+  if(state.tabs.length === 0) createTab({url:'https://example.com', mode:'iframe'});
+  else { renderTabs(); applyTab(getActive()); }
+
+  // debug
+  window.cakcukator = { state, createTab, selectTab, closeTab, saveState };
+})();
+</script>
+</body>
+</html>

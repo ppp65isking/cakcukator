@@ -12,7 +12,11 @@
     .dock{display:flex;gap:12px;align-items:center}
     .app-icon{width:56px;height:56px;background:rgba(255,255,255,0.03);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid rgba(255,255,255,0.02)}
     .app-icon:hover{transform:translateY(-3px);box-shadow:0 6px 20px rgba(0,0,0,0.6)}
-    .taskbar{margin-top:auto;padding:10px;background:rgba(0,0,0,0.25);border-radius:10px;display:flex;gap:12px;align-items:center}
+    .taskbar{position:fixed;left:18px;right:18px;bottom:18px;padding:10px;background:rgba(2,6,23,0.6);border-radius:12px;display:flex;gap:12px;align-items:center;justify-content:space-between}
+    .taskbar .left{display:flex;gap:8px;align-items:center}
+    .taskbar .right{display:flex;gap:8px;align-items:center}
+    .task-item{display:flex;gap:6px;align-items:center;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.02);cursor:pointer}
+    .task-item.active{box-shadow:0 4px 18px rgba(0,0,0,0.6);background:linear-gradient(90deg, rgba(37,99,235,0.12), rgba(37,99,235,0.05))}
     .window{position:absolute;background:var(--panel);border:1px solid rgba(255,255,255,0.03);border-radius:8px;box-shadow:0 10px 40px rgba(2,6,23,0.6);overflow:hidden}
     .window .title{display:flex;align-items:center;gap:8px;padding:8px 10px;background:linear-gradient(90deg, rgba(255,255,255,0.02), transparent);font-weight:600}
     .window .controls{margin-left:auto;display:flex;gap:6px}
@@ -46,8 +50,13 @@
       <div class="app-icon" id="openNotepad" title="Notepad">📝</div>
     </div>
 
-    <div class="taskbar">
-      <div class="small">UBos running in your browser — storage, cookies (emulated), apps</div>
+    <div style="flex:1"></div>
+
+    <div class="taskbar" id="taskbar">
+      <div class="left" id="taskLeft"></div>
+      <div class="right">
+        <div class="small">UBos — local-only mode</div>
+      </div>
     </div>
   </div>
 
@@ -56,7 +65,8 @@
     <div class="title">
       <div>Browser</div>
       <div class="controls">
-        <div class="btn close" id="closeBrowser"></div>
+        <div class="btn min" id="minBrowser" title="Minimize"></div>
+        <div class="btn close" id="closeBrowser" title="Close"></div>
       </div>
     </div>
     <div class="content" style="display:flex;flex-direction:column">
@@ -82,7 +92,8 @@
     <div class="title">
       <div>Notepad</div>
       <div class="controls">
-        <div class="btn close" id="closeNote"></div>
+        <div class="btn min" id="minNote" title="Minimize"></div>
+        <div class="btn close" id="closeNote" title="Close"></div>
       </div>
     </div>
     <div class="content notepad">
@@ -112,10 +123,14 @@
   // Window controls
   const browserWindow = document.getElementById('browserWindow');
   const noteWindow = document.getElementById('noteWindow');
-  document.getElementById('openBrowser').addEventListener('click', ()=>{ browserWindow.style.display='block'; });
-  document.getElementById('openNotepad').addEventListener('click', ()=>{ noteWindow.style.display='block'; });
-  document.getElementById('closeBrowser').addEventListener('click', ()=>{ browserWindow.style.display='none'; });
-  document.getElementById('closeNote').addEventListener('click', ()=>{ noteWindow.style.display='none'; });
+  const taskLeft = document.getElementById('taskLeft');
+
+  document.getElementById('openBrowser').addEventListener('click', ()=>{ openApp('browser'); });
+  document.getElementById('openNotepad').addEventListener('click', ()=>{ openApp('notepad'); });
+  document.getElementById('closeBrowser').addEventListener('click', ()=>{ closeApp('browser'); });
+  document.getElementById('closeNote').addEventListener('click', ()=>{ closeApp('notepad'); });
+  document.getElementById('minBrowser').addEventListener('click', ()=>{ minimizeApp('browser'); });
+  document.getElementById('minNote').addEventListener('click', ()=>{ minimizeApp('notepad'); });
 
   // Notepad app
   const noteArea = document.getElementById('noteArea');
@@ -124,6 +139,7 @@
     const name = noteTitle.value.trim()||'untitled';
     localStorage.setItem('ubos_note_'+name, noteArea.value);
     alert('Saved ' + name);
+    refreshTaskbar();
   });
   document.getElementById('loadNote').addEventListener('click', ()=>{
     const name = noteTitle.value.trim()||'untitled';
@@ -132,8 +148,29 @@
     alert('Loaded ' + name);
   });
 
+  // Taskbar management
+  const apps = {
+    browser: { id:'browser', title:'Browser', icon:'🌐', el: browserWindow, open: false, minimized: false },
+    notepad: { id:'notepad', title:'Notepad', icon:'📝', el: noteWindow, open: false, minimized: false }
+  };
+
+  function openApp(name){ const a=apps[name]; if(!a) return; a.open = true; a.minimized = false; a.el.style.display='block'; bringToFront(a.el); refreshTaskbar(); }
+  function closeApp(name){ const a=apps[name]; if(!a) return; a.open=false; a.minimized=false; a.el.style.display='none'; refreshTaskbar(); }
+  function minimizeApp(name){ const a=apps[name]; if(!a) return; a.minimized = true; a.el.style.display='none'; refreshTaskbar(); }
+  function restoreApp(name){ const a=apps[name]; if(!a) return; a.minimized=false; a.open=true; a.el.style.display='block'; bringToFront(a.el); refreshTaskbar(); }
+
+  function bringToFront(el){ // simple z-index by timestamp
+    const t = Date.now(); el.style.zIndex = 1000 + t%1000; }
+
+  function refreshTaskbar(){ taskLeft.innerHTML=''; Object.values(apps).forEach(a=>{
+    const item = document.createElement('div'); item.className='task-item'+(a.open && !a.minimized? ' active':''); item.title = a.title; item.innerHTML = `<span style="font-size:18px">${a.icon}</span><div style="margin-left:6px">${a.title}</div>`;
+    item.addEventListener('click', ()=>{ if(!a.open || a.minimized) restoreApp(a.id); else minimizeApp(a.id); });
+    taskLeft.appendChild(item);
+  }); }
+
   // Browser app — tabbed + proxy + cookie messaging
-  const PROXY = 'https://api.allorigins.win/raw?url='; // public proxy
+  const PROXY = '/proxy?url='; // default points to same-origin proxy if you deploy one. Falls back to public proxy if not available in code below.
+  const PUB_PROXY = 'https://api.allorigins.win/raw?url='; // fallback public proxy
   const ubTabbar = document.getElementById('ubTabbar');
   const ubViewer = document.getElementById('ubViewer');
   const ubUrl = document.getElementById('ubUrl');
@@ -161,7 +198,18 @@
 
   // Fetch through proxy and rewrite resource URLs to go via proxy too, plus inject cookie bridge
   async function fetchAndPrepare(url){
-    const proxyUrl = PROXY + encodeURIComponent(url);
+    // decide which proxy to use: prefer same-origin PROXY if it responds quickly (try a HEAD), otherwise fallback to PUB_PROXY
+    let proxyPrefix = PROXY;
+    try{
+      // quick probe: fetch a 1-byte request to PROXY root to see if available (timeout 1500ms)
+      const controller = new AbortController();
+      const id = setTimeout(()=>controller.abort(), 1500);
+      const probe = await fetch(PROXY + encodeURIComponent('https://example.com'), { method:'GET', signal: controller.signal });
+      clearTimeout(id);
+      if (!probe.ok) throw new Error('probe failed');
+    }catch(e){ proxyPrefix = PUB_PROXY; }
+
+    const proxyUrl = proxyPrefix + encodeURIComponent(url);
     const res = await fetch(proxyUrl);
     if(!res.ok) throw new Error('Proxy HTTP ' + res.status);
     let html = await res.text();
@@ -174,12 +222,11 @@
     const base = doc.querySelector('base') || doc.createElement('base'); base.setAttribute('href', url); doc.head.prepend(base);
 
     // Helper to make absolute URLs and route via proxy
-    function routeAttr(el, attr){ const val = el.getAttribute(attr); if(!val) return; try{ const abs = new URL(val, url).href; el.setAttribute(attr, PROXY + encodeURIComponent(abs)); }catch(e){} }
+    function routeAttr(el, attr){ const val = el.getAttribute(attr); if(!val) return; try{ const abs = new URL(val, url).href; el.setAttribute(attr, proxyPrefix + encodeURIComponent(abs)); }catch(e){} }
 
     // Rewrite images, scripts, links, stylesheets, iframes
     doc.querySelectorAll('img').forEach(img=>routeAttr(img,'src'));
     doc.querySelectorAll('script').forEach(s=>{
-      // For inline scripts, keep them — but dangerous. We'll leave inline but also inject cookie bridge.
       if(s.src) routeAttr(s,'src');
     });
     doc.querySelectorAll('link[rel="stylesheet"]').forEach(l=>routeAttr(l,'href'));
@@ -192,22 +239,15 @@
     const bridge = doc.createElement('script');
     bridge.textContent = `
       (function(){
-        const host = location.href;
-        // document.cookie bridge using postMessage to parent
-        Object.defineProperty(document, 'cookie', {
-          get: function(){
-            try{ const resp = window.parent.postMessage({type:'getCookies', host:location.origin}, '*'); }catch(e){}
-            // parent will synchronously not return; instead parent will send message and page should listen — to keep simple, return empty
-            return '';
-          },
-          set: function(val){ try{ window.parent.postMessage({type:'setCookie', host:location.origin, cookie: String(val)}, '*'); }catch(e){} }
-        });
-        // override window.open to inform parent to load in-app
-        const _open = window.open;
-        window.open = function(u,name,opts){ window.parent.postMessage({type:'openLink', url:u}, '*'); return null; };
-        // intercept fetch to route through parent proxy if available
-        const _fetch = window.fetch.bind(window);
-        window.fetch = function(resource, init){ try{ window.parent.postMessage({type:'fetch', resource: String(resource)}, '*'); }catch(e){} return _fetch(resource, init); };
+        try{
+          // document.cookie bridge via postMessage
+          Object.defineProperty(document, 'cookie', {
+            get: function(){ window.parent.postMessage({type:'getCookies', origin:location.origin}, '*'); return ''; },
+            set: function(val){ window.parent.postMessage({type:'setCookie', origin:location.origin, cookie: String(val)}, '*'); }
+          });
+          // intercept window.open to open links inside the app
+          window.open = function(u){ window.parent.postMessage({type:'openLink', url:String(u)}, '*'); return null; };
+        }catch(e){}
       })();
     `;
     doc.head.appendChild(bridge);
@@ -237,15 +277,13 @@
       const m = ev.data;
       if(!m || typeof m !== 'object') return;
       if(m.type === 'getCookies'){
-        const host = m.host || (new URL(m.url||'')).origin;
+        const host = (m.origin||'');
         const cookies = CookieJar.get(host) || '';
-        // reply back to iframe origin
         ev.source.postMessage({type:'cookies', host, cookies}, '*');
       } else if(m.type === 'setCookie'){
-        const host = m.host || (new URL(m.url||'')).origin;
+        const host = (m.origin||'');
         CookieJar.set(host, m.cookie || '');
       } else if(m.type === 'openLink'){
-        // open link in current UBos browser tab
         const url = m.url; if(!url) return; const t = tabs.find(x=>x.id===active); if(t){ pushHistory(t, url); loadTab(t); }
       }
     }catch(e){}
@@ -266,6 +304,9 @@
 
   // expose for debugging
   window.UBos = { tabs, selectTab, createTab, pushHistory };
+
+  // initial taskbar refresh
+  refreshTaskbar();
 })();
 </script>
 </body>

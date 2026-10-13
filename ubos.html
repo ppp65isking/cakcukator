@@ -3,39 +3,73 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>UBos — browser + notepad</title>
+  <title>UBos — browser + notepad (Windows 11 style)</title>
   <style>
-    :root{--bg:#0f172a;--panel:#0b1220;--accent:#2563eb;--muted:#94a3b8;--card:#0b1226}
+    /* Windows 11-like theme adjustments */
+    :root{
+      --bg:#0b1220;
+      --panel:rgba(255,255,255,0.03);
+      --accent:#2563eb;
+      --muted:#94a3b8;
+      --taskbar-height:64px;
+      --glass: rgba(255,255,255,0.06);
+    }
     *{box-sizing:border-box}
-    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#071029 0%, #071627 100%);color:#e6eef8}
-    .desktop{height:100vh;padding:18px;display:flex;flex-direction:column;gap:12px}
+    html,body{height:100%;margin:0;font-family:Inter,Segoe UI,Roboto,system-ui,Arial;background:linear-gradient(180deg,#071029 0%, #071627 100%);color:#e6eef8}
+
+    /* Desktop */
+    .desktop{height:100vh;padding:24px;display:flex;flex-direction:column;gap:12px}
     .dock{display:flex;gap:12px;align-items:center}
-    .app-icon{width:56px;height:56px;background:rgba(255,255,255,0.03);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid rgba(255,255,255,0.02)}
-    .app-icon:hover{transform:translateY(-3px);box-shadow:0 6px 20px rgba(0,0,0,0.6)}
-    .taskbar{position:fixed;left:18px;right:18px;bottom:18px;padding:10px;background:rgba(2,6,23,0.6);border-radius:12px;display:flex;gap:12px;align-items:center;justify-content:space-between}
-    .taskbar .left{display:flex;gap:8px;align-items:center}
-    .taskbar .right{display:flex;gap:8px;align-items:center}
-    .task-item{display:flex;gap:6px;align-items:center;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.02);cursor:pointer}
-    .task-item.active{box-shadow:0 4px 18px rgba(0,0,0,0.6);background:linear-gradient(90deg, rgba(37,99,235,0.12), rgba(37,99,235,0.05))}
-    .window{position:absolute;background:var(--panel);border:1px solid rgba(255,255,255,0.03);border-radius:8px;box-shadow:0 10px 40px rgba(2,6,23,0.6);overflow:hidden}
-    .window .title{display:flex;align-items:center;gap:8px;padding:8px 10px;background:linear-gradient(90deg, rgba(255,255,255,0.02), transparent);font-weight:600}
-    .window .controls{margin-left:auto;display:flex;gap:6px}
-    .btn{width:14px;height:14px;border-radius:50%;display:inline-block}
-    .btn.close{background:#ff6b6b}
-    .btn.min{background:#f6c04d}
-    .btn.max{background:#6be48b}
-    .content{height:calc(100% - 40px);background:#071026}
-    /* UBos styles for apps */
+
+    /* App icons */
+    .app-icon{width:56px;height:56px;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid rgba(255,255,255,0.03);transition:transform .18s,box-shadow .18s}
+    .app-icon:hover{transform:translateY(-6px);box-shadow:0 10px 30px rgba(0,0,0,0.6)}
+
+    /* Taskbar - centered like Windows 11 */
+    .taskbar{position:fixed;left:0;right:0;bottom:16px;height:var(--taskbar-height);display:flex;align-items:center;justify-content:center;pointer-events:none}
+    .taskbar-inner{width:fit-content;display:flex;align-items:center;gap:12px;padding:8px 14px;border-radius:14px;background:var(--glass);backdrop-filter: blur(10px) saturate(120%);box-shadow:0 8px 30px rgba(2,6,23,0.6);pointer-events:auto}
+
+    .task-left,.task-center,.task-right{display:flex;align-items:center;gap:8px}
+    .task-center{gap:10px}
+
+    .task-item{display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px;border-radius:10px;background:transparent;cursor:pointer;color:#e6eef8;font-size:11px;min-width:52px}
+    .task-item .icon{font-size:20px}
+    .task-item.active{background:linear-gradient(90deg, rgba(37,99,235,0.12), rgba(37,99,235,0.05));box-shadow:0 6px 20px rgba(2,6,23,0.6)}
+
+    /* Start button specifics */
+    .start-btn{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);cursor:pointer}
+
+    /* Windows-like window */
+    .window{position:absolute;background:rgba(3,7,18,0.8);border:1px solid rgba(255,255,255,0.04);border-radius:12px;box-shadow:0 12px 50px rgba(2,6,23,0.6);overflow:hidden}
+    .window .title{display:flex;align-items:center;gap:8px;padding:10px;background:linear-gradient(90deg, rgba(255,255,255,0.01), transparent);font-weight:600}
+    .window .controls{margin-left:auto;display:flex;gap:8px}
+    .w-btn{width:14px;height:14px;border-radius:50%;display:inline-block}
+    .w-btn.close{background:#ff6b6b}
+    .w-btn.min{background:#f6c04d}
+    .w-btn.max{background:#6be48b}
+    .content{height:calc(100% - 48px);background:#071026}
+
+    /* Browser + Notepad specifics */
     .browser-ui{display:flex;flex-direction:column;height:100%}
-    .tabbar{display:flex;gap:6px;padding:8px;background:#081425}
-    .tab{padding:6px 10px;background:#0b1b33;border-radius:6px;color:#cfe6ff;cursor:pointer}
+    .tabbar{display:flex;gap:8px;padding:8px;background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent)}
+    .tab{padding:8px 12px;background:transparent;border-radius:10px;color:#cfe6ff;cursor:pointer}
     .tab.active{background:linear-gradient(90deg,#0f3b72,#0b6bb3);font-weight:700}
-    .nav{display:flex;gap:8px;padding:8px;background:#071326;align-items:center}
-    .nav input{flex:1;padding:8px;border-radius:6px;border:none}
-    .viewer{height:100%;background:#ffffff}
+    .nav{display:flex;gap:8px;padding:10px;background:transparent;align-items:center}
+    .nav input{flex:1;padding:8px;border-radius:8px;border:0;background:rgba(0,0,0,0.35);color:#e6eef8}
+    .nav button{padding:8px 10px;border-radius:8px;border:0;background:var(--accent);color:white;cursor:pointer}
+    .viewer{height:100%;background:white;border-radius:0 0 8px 8px}
+
     .notepad{display:flex;flex-direction:column;height:100%}
-    .notepad textarea{flex:1;padding:12px;border:none;background:#071026;color:#e6eef8;font-family:monospace}
-    .small{font-size:12px;color:var(--muted)}
+    .notepad textarea{flex:1;padding:12px;border:none;background:transparent;color:#e6eef8;font-family:monospace}
+
+    /* Start menu */
+    .start-menu{position:fixed;left:50%;bottom:calc(var(--taskbar-height) + 26px);transform:translateX(-50%);width:600px;background:linear-gradient(180deg, rgba(10,14,20,0.95), rgba(6,10,16,0.95));border-radius:12px;padding:12px;box-shadow:0 18px 50px rgba(2,6,23,0.7);display:none}
+    .start-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    .pin{background:rgba(255,255,255,0.02);padding:12px;border-radius:8px;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer}
+    .start-links{margin-top:12px;display:flex;gap:12px;justify-content:space-between}
+    .link-btn{background:transparent;border:1px solid rgba(255,255,255,0.03);padding:8px 10px;border-radius:8px;cursor:pointer}
+
+    @media (max-width:700px){ .start-menu{width:92vw} }
   </style>
 </head>
 <body>
@@ -53,9 +87,25 @@
     <div style="flex:1"></div>
 
     <div class="taskbar" id="taskbar">
-      <div class="left" id="taskLeft"></div>
-      <div class="right">
-        <div class="small">UBos — local-only mode</div>
+      <div class="taskbar-inner">
+        <div class="task-left">
+          <div class="start-btn" id="startBtn">☰</div>
+        </div>
+        <div class="task-center" id="taskCenter"></div>
+        <div class="task-right">
+          <div class="small">UBos</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="start-menu" id="startMenu" role="menu">
+      <div class="start-grid" id="startGrid">
+        <!-- pinned apps populated by JS -->
+      </div>
+      <div class="start-links">
+        <button class="link-btn" id="linkRepo">Open GitHub Repo</button>
+        <button class="link-btn" id="linkUBos">Open UBos Home</button>
+        <div></div>
       </div>
     </div>
   </div>
@@ -65,8 +115,8 @@
     <div class="title">
       <div>Browser</div>
       <div class="controls">
-        <div class="btn min" id="minBrowser" title="Minimize"></div>
-        <div class="btn close" id="closeBrowser" title="Close"></div>
+        <div class="w-btn min" id="minBrowser" title="Minimize"></div>
+        <div class="w-btn close" id="closeBrowser" title="Close"></div>
       </div>
     </div>
     <div class="content" style="display:flex;flex-direction:column">
@@ -92,8 +142,8 @@
     <div class="title">
       <div>Notepad</div>
       <div class="controls">
-        <div class="btn min" id="minNote" title="Minimize"></div>
-        <div class="btn close" id="closeNote" title="Close"></div>
+        <div class="w-btn min" id="minNote" title="Minimize"></div>
+        <div class="w-btn close" id="closeNote" title="Close"></div>
       </div>
     </div>
     <div class="content notepad">
@@ -124,6 +174,10 @@
   const browserWindow = document.getElementById('browserWindow');
   const noteWindow = document.getElementById('noteWindow');
   const taskLeft = document.getElementById('taskLeft');
+  const taskCenter = document.getElementById('taskCenter');
+  const startBtn = document.getElementById('startBtn');
+  const startMenu = document.getElementById('startMenu');
+  const startGrid = document.getElementById('startGrid');
 
   document.getElementById('openBrowser').addEventListener('click', ()=>{ openApp('browser'); });
   document.getElementById('openNotepad').addEventListener('click', ()=>{ openApp('notepad'); });
@@ -162,14 +216,14 @@
   function bringToFront(el){ // simple z-index by timestamp
     const t = Date.now(); el.style.zIndex = 1000 + t%1000; }
 
-  function refreshTaskbar(){ taskLeft.innerHTML=''; Object.values(apps).forEach(a=>{
-    const item = document.createElement('div'); item.className='task-item'+(a.open && !a.minimized? ' active':''); item.title = a.title; item.innerHTML = `<span style="font-size:18px">${a.icon}</span><div style="margin-left:6px">${a.title}</div>`;
+  function refreshTaskbar(){ taskCenter.innerHTML=''; Object.values(apps).forEach(a=>{
+    const item = document.createElement('div'); item.className='task-item'+(a.open && !a.minimized? ' active':''); item.title = a.title; item.innerHTML = `<div class="icon">${a.icon}</div><div style="font-size:11px">${a.title}</div>`;
     item.addEventListener('click', ()=>{ if(!a.open || a.minimized) restoreApp(a.id); else minimizeApp(a.id); });
-    taskLeft.appendChild(item);
+    taskCenter.appendChild(item);
   }); }
 
   // Browser app — tabbed + proxy + cookie messaging
-  const PROXY = 'https://dark-bread-d60d.anpuop1511.workers.dev/?url='; // default points to your Cloudflare Worker
+  const PROXY = 'https://dark-bread-d60d.anpuop1511.workers.dev/?url='; // user worker
   const PUB_PROXY = 'https://api.allorigins.win/raw?url='; // fallback public proxy
   const ubTabbar = document.getElementById('ubTabbar');
   const ubViewer = document.getElementById('ubViewer');
@@ -196,12 +250,25 @@
   function saveUBState(){ localStorage.setItem('ubos_browser_v1', JSON.stringify({tabs,active})); }
   function loadUBState(){ try{ const s=JSON.parse(localStorage.getItem('ubos_browser_v1')||'null'); if(s){tabs=s.tabs;active=s.active;} }catch(e){} }
 
+  // open link in UBos browser (select or create tab)
+  function openLinkInBrowser(url){
+    if(!url) return;
+    // normalize
+    if(!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) url = 'https://' + url;
+    // reuse active browser tab or create new
+    if(!tabs || tabs.length===0) createTab(url);
+    else{
+      const t = tabs.find(x=>x.id===active);
+      if(t){ pushHistory(t, url); loadTab(t); } else createTab(url);
+    }
+    // ensure browser app open
+    openApp('browser');
+  }
+
   // Fetch through proxy and rewrite resource URLs to go via proxy too, plus inject cookie bridge
   async function fetchAndPrepare(url){
-    // decide which proxy to use: prefer same-origin PROXY if it responds quickly (try a HEAD), otherwise fallback to PUB_PROXY
     let proxyPrefix = PROXY;
     try{
-      // quick probe: fetch a 1-byte request to PROXY root to see if available (timeout 1500ms)
       const controller = new AbortController();
       const id = setTimeout(()=>controller.abort(), 1500);
       const probe = await fetch(PROXY + encodeURIComponent('https://example.com'), { method:'GET', signal: controller.signal });
@@ -214,38 +281,27 @@
     if(!res.ok) throw new Error('Proxy HTTP ' + res.status);
     let html = await res.text();
 
-    // parse and rewrite with DOMParser
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
-    // Insert base tag
     const base = doc.querySelector('base') || doc.createElement('base'); base.setAttribute('href', url); doc.head.prepend(base);
 
-    // Helper to make absolute URLs and route via proxy
     function routeAttr(el, attr){ const val = el.getAttribute(attr); if(!val) return; try{ const abs = new URL(val, url).href; el.setAttribute(attr, proxyPrefix + encodeURIComponent(abs)); }catch(e){} }
 
-    // Rewrite images, scripts, links, stylesheets, iframes
     doc.querySelectorAll('img').forEach(img=>routeAttr(img,'src'));
-    doc.querySelectorAll('script').forEach(s=>{
-      if(s.src) routeAttr(s,'src');
-    });
+    doc.querySelectorAll('script').forEach(s=>{ if(s.src) routeAttr(s,'src'); });
     doc.querySelectorAll('link[rel="stylesheet"]').forEach(l=>routeAttr(l,'href'));
     doc.querySelectorAll('iframe').forEach(f=>routeAttr(f,'src'));
-    doc.querySelectorAll('a').forEach(a=>{
-      const href = a.getAttribute('href'); if(!href) return; try{ const abs=new URL(href,url).href; a.setAttribute('href', abs); a.setAttribute('target','_self'); }catch(e){}
-    });
+    doc.querySelectorAll('a').forEach(a=>{ const href = a.getAttribute('href'); if(!href) return; try{ const abs=new URL(href,url).href; a.setAttribute('href', abs); a.setAttribute('target','_self'); }catch(e){} });
 
-    // Inject cookie bridge and small helper script at the end of head
     const bridge = doc.createElement('script');
     bridge.textContent = `
       (function(){
         try{
-          // document.cookie bridge via postMessage
           Object.defineProperty(document, 'cookie', {
             get: function(){ window.parent.postMessage({type:'getCookies', origin:location.origin}, '*'); return ''; },
             set: function(val){ window.parent.postMessage({type:'setCookie', origin:location.origin, cookie: String(val)}, '*'); }
           });
-          // intercept window.open to open links inside the app
           window.open = function(u){ window.parent.postMessage({type:'openLink', url:String(u)}, '*'); return null; };
         }catch(e){}
       })();
@@ -302,11 +358,32 @@
   // load saved browser state or create default
   loadUBState(); if(!tabs || tabs.length===0) createTab('https://example.com'); else { renderTabs(); if(active) selectTab(active); }
 
-  // expose for debugging
-  window.UBos = { tabs, selectTab, createTab, pushHistory };
+  // Start menu: populate pinned apps/links and wire buttons to open in UBos browser
+  const pinned = [
+    {title:'Browser', icon:'🌐', action: ()=>openApp('browser')},
+    {title:'Notepad', icon:'📝', action: ()=>openApp('notepad')},
+    {title:'GitHub', icon:'🐙', action: ()=>openLinkInBrowser('https://github.com/ppp65isking/cakcukator')},
+    {title:'UBos Home', icon:'🏠', action: ()=>openLinkInBrowser('https://ppp65isking.github.io/cakcukator/')}
+  ];
 
-  // initial taskbar refresh
-  refreshTaskbar();
+  function renderStartMenu(){ startGrid.innerHTML=''; pinned.forEach(p=>{
+    const el = document.createElement('div'); el.className='pin'; el.innerHTML = `<div style="font-size:20px">${p.icon}</div><div style="font-size:13px">${p.title}</div>`;
+    el.addEventListener('click', ()=>{ p.action(); hideStartMenu(); }); startGrid.appendChild(el);
+  }); }
+
+  startBtn.addEventListener('click', ()=>{ if(startMenu.style.display==='block') hideStartMenu(); else showStartMenu(); });
+  document.getElementById('linkRepo').addEventListener('click', ()=>{ openLinkInBrowser('https://github.com/ppp65isking/cakcukator'); hideStartMenu(); });
+  document.getElementById('linkUBos').addEventListener('click', ()=>{ openLinkInBrowser('https://ppp65isking.github.io/cakcukator/'); hideStartMenu(); });
+
+  function showStartMenu(){ renderStartMenu(); startMenu.style.display='block'; }
+  function hideStartMenu(){ startMenu.style.display='none'; }
+
+  // expose for debugging
+  window.UBos = { tabs, selectTab, createTab, pushHistory, openLinkInBrowser };
+
+  // initial taskbar refresh and start menu render
+  refreshTaskbar(); renderStartMenu();
+
 })();
 </script>
 </body>

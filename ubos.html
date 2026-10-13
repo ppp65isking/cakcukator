@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>UBos — browser + notepad</title>
+  <style>
+    :root{--bg:#0f172a;--panel:#0b1220;--accent:#2563eb;--muted:#94a3b8;--card:#0b1226}
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#071029 0%, #071627 100%);color:#e6eef8}
+    .desktop{height:100vh;padding:18px;display:flex;flex-direction:column;gap:12px}
+    .dock{display:flex;gap:12px;align-items:center}
+    .app-icon{width:56px;height:56px;background:rgba(255,255,255,0.03);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid rgba(255,255,255,0.02)}
+    .app-icon:hover{transform:translateY(-3px);box-shadow:0 6px 20px rgba(0,0,0,0.6)}
+    .taskbar{margin-top:auto;padding:10px;background:rgba(0,0,0,0.25);border-radius:10px;display:flex;gap:12px;align-items:center}
+    .window{position:absolute;background:var(--panel);border:1px solid rgba(255,255,255,0.03);border-radius:8px;box-shadow:0 10px 40px rgba(2,6,23,0.6);overflow:hidden}
+    .window .title{display:flex;align-items:center;gap:8px;padding:8px 10px;background:linear-gradient(90deg, rgba(255,255,255,0.02), transparent);font-weight:600}
+    .window .controls{margin-left:auto;display:flex;gap:6px}
+    .btn{width:14px;height:14px;border-radius:50%;display:inline-block}
+    .btn.close{background:#ff6b6b}
+    .btn.min{background:#f6c04d}
+    .btn.max{background:#6be48b}
+    .content{height:calc(100% - 40px);background:#071026}
+    /* UBos styles for apps */
+    .browser-ui{display:flex;flex-direction:column;height:100%}
+    .tabbar{display:flex;gap:6px;padding:8px;background:#081425}
+    .tab{padding:6px 10px;background:#0b1b33;border-radius:6px;color:#cfe6ff;cursor:pointer}
+    .tab.active{background:linear-gradient(90deg,#0f3b72,#0b6bb3);font-weight:700}
+    .nav{display:flex;gap:8px;padding:8px;background:#071326;align-items:center}
+    .nav input{flex:1;padding:8px;border-radius:6px;border:none}
+    .viewer{height:100%;background:#ffffff}
+    .notepad{display:flex;flex-direction:column;height:100%}
+    .notepad textarea{flex:1;padding:12px;border:none;background:#071026;color:#e6eef8;font-family:monospace}
+    .small{font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="desktop" id="desktop">
+    <div style="display:flex;gap:12px;align-items:center">
+      <h2 style="margin:0">UBos</h2>
+      <div class="small">A tiny web OS — Browser + Notepad</div>
+    </div>
+
+    <div class="dock">
+      <div class="app-icon" id="openBrowser" title="Browser">🌐</div>
+      <div class="app-icon" id="openNotepad" title="Notepad">📝</div>
+    </div>
+
+    <div class="taskbar">
+      <div class="small">UBos running in your browser — storage, cookies (emulated), apps</div>
+    </div>
+  </div>
+
+  <!-- Browser Window -->
+  <div class="window" id="browserWindow" style="width:80%;height:70%;left:8%;top:8%;display:none">
+    <div class="title">
+      <div>Browser</div>
+      <div class="controls">
+        <div class="btn close" id="closeBrowser"></div>
+      </div>
+    </div>
+    <div class="content" style="display:flex;flex-direction:column">
+      <div class="browser-ui" style="flex:1;display:flex;flex-direction:column">
+        <div class="tabbar" id="ubTabbar"></div>
+        <div class="nav">
+          <button id="ubBack">◀</button>
+          <button id="ubForward">▶</button>
+          <input id="ubUrl" placeholder="https://example.com" />
+          <button id="ubGo">Go</button>
+          <button id="ubNew">New Tab</button>
+          <label class="small" style="margin-left:6px">Proxy <input type="checkbox" id="ubProxy" checked /></label>
+        </div>
+        <div style="flex:1;position:relative;background:white" id="ubViewerWrap">
+          <iframe id="ubViewer" sandbox="allow-scripts allow-forms allow-popups" style="position:absolute;inset:0;border:0;width:100%;height:100%"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notepad Window -->
+  <div class="window" id="noteWindow" style="width:50%;height:50%;left:25%;top:25%;display:none">
+    <div class="title">
+      <div>Notepad</div>
+      <div class="controls">
+        <div class="btn close" id="closeNote"></div>
+      </div>
+    </div>
+    <div class="content notepad">
+      <div style="display:flex;gap:8px;padding:8px;background:#081425">
+        <input id="noteTitle" placeholder="Filename" style="padding:6px;border-radius:6px;border:none" />
+        <button id="saveNote">Save</button>
+        <button id="loadNote">Load</button>
+      </div>
+      <textarea id="noteArea" placeholder="Write notes here..."></textarea>
+    </div>
+  </div>
+
+<script>
+// UBos: manages windows and apps, plus emulated cookie storage and app data
+(function(){
+  const storageKey = 'ubos_state_v1';
+  const cookieKey = 'ubos_cookies_v1';
+  function saveState(state){ localStorage.setItem(storageKey, JSON.stringify(state)); }
+  function loadState(){ try{return JSON.parse(localStorage.getItem(storageKey))||{};}catch(e){return{}} }
+
+  // Simple cookie jar stored in localStorage keyed by host
+  const CookieJar = {
+    get(host){ const all = JSON.parse(localStorage.getItem(cookieKey)||'{}'); return all[host]||''; },
+    set(host, cookieStr){ const all = JSON.parse(localStorage.getItem(cookieKey)||'{}'); all[host]=cookieStr; localStorage.setItem(cookieKey, JSON.stringify(all)); }
+  };
+
+  // Window controls
+  const browserWindow = document.getElementById('browserWindow');
+  const noteWindow = document.getElementById('noteWindow');
+  document.getElementById('openBrowser').addEventListener('click', ()=>{ browserWindow.style.display='block'; });
+  document.getElementById('openNotepad').addEventListener('click', ()=>{ noteWindow.style.display='block'; });
+  document.getElementById('closeBrowser').addEventListener('click', ()=>{ browserWindow.style.display='none'; });
+  document.getElementById('closeNote').addEventListener('click', ()=>{ noteWindow.style.display='none'; });
+
+  // Notepad app
+  const noteArea = document.getElementById('noteArea');
+  const noteTitle = document.getElementById('noteTitle');
+  document.getElementById('saveNote').addEventListener('click', ()=>{
+    const name = noteTitle.value.trim()||'untitled';
+    localStorage.setItem('ubos_note_'+name, noteArea.value);
+    alert('Saved ' + name);
+  });
+  document.getElementById('loadNote').addEventListener('click', ()=>{
+    const name = noteTitle.value.trim()||'untitled';
+    const v = localStorage.getItem('ubos_note_'+name)||'';
+    noteArea.value = v;
+    alert('Loaded ' + name);
+  });
+
+  // Browser app — tabbed + proxy + cookie messaging
+  const PROXY = 'https://api.allorigins.win/raw?url='; // public proxy
+  const ubTabbar = document.getElementById('ubTabbar');
+  const ubViewer = document.getElementById('ubViewer');
+  const ubUrl = document.getElementById('ubUrl');
+  const ubGo = document.getElementById('ubGo');
+  const ubBack = document.getElementById('ubBack');
+  const ubForward = document.getElementById('ubForward');
+  const ubNew = document.getElementById('ubNew');
+  const ubProxy = document.getElementById('ubProxy');
+
+  let tabs = []; let active = null;
+  function makeId(){ return 'tab-'+Date.now()+'-'+Math.random().toString(36).slice(2,9); }
+  function titleFromUrl(u){ try{ return new URL(u).hostname.replace(/^www\./,'') }catch(e){ return u; } }
+
+  function renderTabs(){ ubTabbar.innerHTML=''; tabs.forEach(t=>{
+    const d = document.createElement('div'); d.className='tab'+(t.id===active? ' active':''); d.textContent = t.title||t.url; d.addEventListener('click', ()=>selectTab(t.id));
+    ubTabbar.appendChild(d);
+  }); const btn=document.createElement('div'); btn.className='tab'; btn.textContent='+ New'; btn.addEventListener('click', ()=>createTab()); ubTabbar.appendChild(btn); }
+
+  function createTab(url='https://example.com'){ const id=makeId(); const tab={id,url,history:[url],historyIndex:0,title:titleFromUrl(url),mode:'iframe',srcdoc:''}; tabs.push(tab); active=id; renderTabs(); loadTab(tab); saveUBState(); }
+  function selectTab(id){ active=id; renderTabs(); const t=tabs.find(x=>x.id===id); if(t) loadTab(t); saveUBState(); }
+  function closeTab(id){ if(tabs.length<=1) return; const idx=tabs.findIndex(x=>x.id===id); if(idx===-1) return; tabs.splice(idx,1); if(active===id) active=tabs[Math.max(0,idx-1)].id; renderTabs(); selectTab(active); saveUBState(); }
+
+  function saveUBState(){ localStorage.setItem('ubos_browser_v1', JSON.stringify({tabs,active})); }
+  function loadUBState(){ try{ const s=JSON.parse(localStorage.getItem('ubos_browser_v1')||'null'); if(s){tabs=s.tabs;active=s.active;} }catch(e){} }
+
+  // Fetch through proxy and rewrite resource URLs to go via proxy too, plus inject cookie bridge
+  async function fetchAndPrepare(url){
+    const proxyUrl = PROXY + encodeURIComponent(url);
+    const res = await fetch(proxyUrl);
+    if(!res.ok) throw new Error('Proxy HTTP ' + res.status);
+    let html = await res.text();
+
+    // parse and rewrite with DOMParser
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    // Insert base tag
+    const base = doc.querySelector('base') || doc.createElement('base'); base.setAttribute('href', url); doc.head.prepend(base);
+
+    // Helper to make absolute URLs and route via proxy
+    function routeAttr(el, attr){ const val = el.getAttribute(attr); if(!val) return; try{ const abs = new URL(val, url).href; el.setAttribute(attr, PROXY + encodeURIComponent(abs)); }catch(e){} }
+
+    // Rewrite images, scripts, links, stylesheets, iframes
+    doc.querySelectorAll('img').forEach(img=>routeAttr(img,'src'));
+    doc.querySelectorAll('script').forEach(s=>{
+      // For inline scripts, keep them — but dangerous. We'll leave inline but also inject cookie bridge.
+      if(s.src) routeAttr(s,'src');
+    });
+    doc.querySelectorAll('link[rel="stylesheet"]').forEach(l=>routeAttr(l,'href'));
+    doc.querySelectorAll('iframe').forEach(f=>routeAttr(f,'src'));
+    doc.querySelectorAll('a').forEach(a=>{
+      const href = a.getAttribute('href'); if(!href) return; try{ const abs=new URL(href,url).href; a.setAttribute('href', abs); a.setAttribute('target','_self'); }catch(e){}
+    });
+
+    // Inject cookie bridge and small helper script at the end of head
+    const bridge = doc.createElement('script');
+    bridge.textContent = `
+      (function(){
+        const host = location.href;
+        // document.cookie bridge using postMessage to parent
+        Object.defineProperty(document, 'cookie', {
+          get: function(){
+            try{ const resp = window.parent.postMessage({type:'getCookies', host:location.origin}, '*'); }catch(e){}
+            // parent will synchronously not return; instead parent will send message and page should listen — to keep simple, return empty
+            return '';
+          },
+          set: function(val){ try{ window.parent.postMessage({type:'setCookie', host:location.origin, cookie: String(val)}, '*'); }catch(e){} }
+        });
+        // override window.open to inform parent to load in-app
+        const _open = window.open;
+        window.open = function(u,name,opts){ window.parent.postMessage({type:'openLink', url:u}, '*'); return null; };
+        // intercept fetch to route through parent proxy if available
+        const _fetch = window.fetch.bind(window);
+        window.fetch = function(resource, init){ try{ window.parent.postMessage({type:'fetch', resource: String(resource)}, '*'); }catch(e){} return _fetch(resource, init); };
+      })();
+    `;
+    doc.head.appendChild(bridge);
+
+    return '<!doctype html>\n' + doc.documentElement.outerHTML;
+  }
+
+  async function loadTab(tab){
+    ubUrl.value = tab.url;
+    if(tab.mode === 'srcdoc' && tab.srcdoc){ ubViewer.srcdoc = tab.srcdoc; return; }
+    if(ubProxy.checked){
+      try{
+        ubViewer.srcdoc = `<html><body style="font-family:system-ui;padding:18px">Loading ${tab.url}...</body></html>`;
+        const prepared = await fetchAndPrepare(tab.url);
+        tab.mode='srcdoc'; tab.srcdoc = prepared; ubViewer.srcdoc = prepared; tab.title = titleFromUrl(tab.url); renderTabs(); saveUBState();
+      }catch(err){
+        ubViewer.srcdoc = `<pre style="padding:18px;color:#f87171">Failed: ${err.message}</pre>`;
+      }
+    } else {
+      ubViewer.srcdoc = ''; ubViewer.src = tab.url; tab.mode='iframe';
+    }
+  }
+
+  // Respond to messages from iframe (cookie set/get etc.)
+  window.addEventListener('message', (ev)=>{
+    try{
+      const m = ev.data;
+      if(!m || typeof m !== 'object') return;
+      if(m.type === 'getCookies'){
+        const host = m.host || (new URL(m.url||'')).origin;
+        const cookies = CookieJar.get(host) || '';
+        // reply back to iframe origin
+        ev.source.postMessage({type:'cookies', host, cookies}, '*');
+      } else if(m.type === 'setCookie'){
+        const host = m.host || (new URL(m.url||'')).origin;
+        CookieJar.set(host, m.cookie || '');
+      } else if(m.type === 'openLink'){
+        // open link in current UBos browser tab
+        const url = m.url; if(!url) return; const t = tabs.find(x=>x.id===active); if(t){ pushHistory(t, url); loadTab(t); }
+      }
+    }catch(e){}
+  }, false);
+
+  function pushHistory(tab, url){ if(tab.history[tab.historyIndex] !== url){ tab.history = tab.history.slice(0, tab.historyIndex+1); tab.history.push(url); tab.historyIndex = tab.history.length -1; } tab.url = url; tab.title = titleFromUrl(url); }
+
+  // UI bindings
+  ubGo.addEventListener('click', ()=>{ const t = tabs.find(x=>x.id===active); if(!t) return; const u = normalize(ubUrl.value); pushHistory(t,u); t.mode='iframe'; loadTab(t); });
+  ubNew.addEventListener('click', ()=>createTab('https://example.com'));
+  ubBack.addEventListener('click', ()=>{ const t = tabs.find(x=>x.id===active); if(!t) return; if(t.historyIndex>0){ t.historyIndex--; t.url=t.history[t.historyIndex]; loadTab(t);} });
+  ubForward.addEventListener('click', ()=>{ const t = tabs.find(x=>x.id===active); if(!t) return; if(t.historyIndex < t.history.length-1){ t.historyIndex++; t.url=t.history[t.historyIndex]; loadTab(t);} });
+
+  function normalize(raw){ if(!raw) return ''; if(raw.startsWith('about:')) return raw; if(/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw)) return raw; return 'https://' + raw; }
+
+  // load saved browser state or create default
+  loadUBState(); if(!tabs || tabs.length===0) createTab('https://example.com'); else { renderTabs(); if(active) selectTab(active); }
+
+  // expose for debugging
+  window.UBos = { tabs, selectTab, createTab, pushHistory };
+})();
+</script>
+</body>
+</html>

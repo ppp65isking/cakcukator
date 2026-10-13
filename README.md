@@ -1,14 +1,20 @@
-# cakcukator
+UBos
+=====
 
-Simple browser-in-browser demo that provides tabbed pages, paste/open HTML, and a public CORS proxy fallback for Chromebooks where Linux/Crostini is not available.
+A tiny web-based OS (UBos) with two apps included:
 
-How to use
+- Browser: tabbed browser that uses a public CORS proxy and rewrites resources to route through the proxy. It also injects a small cookie bridge so pages can use document.cookie (emulated per origin in localStorage).
+- Notepad: simple text editor that saves files to localStorage.
 
-1. Visit: https://ppp65isking.github.io/cakcukator/
-2. Use the address bar to load pages. The app uses a public proxy by default so many sites can load. Public proxy is not private — avoid sensitive sites.
-3. Use "Paste HTML" or "Open file" to render local content.
+Notes & limitations
+- This runs entirely in the browser and uses a public proxy (AllOrigins) to fetch remote pages and resources. Public proxies are not private — avoid loading sensitive sites.
+- The cookie bridge is emulated and best-effort: websites running complex cross-origin logic or expecting real browser cookies may not behave identically.
+- Some sites rely on many cross-origin requests and advanced features; they may still break.
 
-Notes
+Open the OS: https://ppp65isking.github.io/cakcukator/
 
-- Some sites may still not work due to cross-origin restrictions or complex JS that expects the original origin.
-- If you want a privacy-preserving setup, run a local proxy (requires Linux/Crostini) and update the script to point to it.
+If you want, I can:
+- add more apps
+- improve the cookie jar to parse/set individual cookies with expiry
+- add a downloads folder and persistent storage for files
+- replace the public proxy with a server-side proxy (more private) if you can run Crostini / Linux
